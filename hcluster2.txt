@@ -1,0 +1,42 @@
+library("ROracle")
+drv=dbDriver("Oracle")
+conn=dbConnect(drv,username="datauser",password="datauser",dbname="10.92.14.32:1521/GZYCICSS")
+
+order=dbSendQuery(conn,"select * from clusterpre2")
+order=fetch(order)
+
+cds=dist(order$P1[1:10000],method="euclidean")
+cave=hclust(cds,method="single")
+res=cutree(cave,k=2)
+
+ids=dbSendQuery(conn,"select pubid from clusterpre2")
+ids=fetch(ids)
+ids=ids$PUBID[1:10000,]
+
+cds2=dist(order$P2[1:10000],method="euclidean")
+cave=hclust(cds2,method="single")
+res2=cutree(cave,k=2)
+
+c=c('','')
+i=1
+
+
+for(i in 1:length(ids)){
+ a=res[i]
+ b=res2[i]
+ if((a==1)&(b==1))
+ c[i]=1
+ else if((a==1)&(b==2))
+ c[i]=2
+ else if((a==2)&(b==1))
+ c[i]=3
+ else
+ c[i]=4
+ }
+
+final=cbind(ids,c)
+dbSendQuery(conn,"drop table \"clustered2\"")
+final=as.data.frame(final)
+names(final)=c("PUBID","c")
+dbWriteTable(conn,"clustered2",final)
+dbSendQuery(conn,"CREATE OR REPLACE VIEW v_cluster AS  SELECT a.pubid LICENSE_CODE,    b.product_name COM_NAME,    a.\"c\" CLU  FROM \"clustered2\" a,    v_d_cgrt_spec b  WHERE a.pubid=b.id")

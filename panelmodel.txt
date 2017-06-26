@@ -1,0 +1,60 @@
+library(plm)	
+library(ROracle)
+drv=dbDriver("Oracle")
+conn=dbConnect(drv,username="datauser",password="datauser",dbname="10.92.14.32:1521/GZYCICSS")
+paneldata=dbSendQuery(conn,"select * from datauri")
+paneldata=fetch(paneldata)
+selectment=paste("select ",field1,",",field2," from datauri")
+panelpre=dbSendQuery(conn,selectment)
+panelpre=fetch(panelpre)
+
+first=as.numeric(panelpre[,1])
+GDP=as.numeric(panelpre[,2])
+city=paneldata$CITY
+season=paneldata$SEASON
+paneldata=cbind.data.frame(city,season,first,GDP)
+
+first.fixed<-plm(log(first)~log(GDP),data=paneldata,model="within" ,index=c("city","season"))
+first.random<-plm(log(first)~log(GDP),data=paneldata,model="random" ,index=c("city","season"))
+first.poolced<-plm(log(first)~log(GDP),data=paneldata,model="pooling" ,index=c("city","season"))
+
+modeltype1="fixed"
+modeltype2="random"
+modeltype3="pooled"
+modeltype=t(data.frame(modeltype1,modeltype2,modeltype3))
+
+coefficient1=paste(first.fixed$coefficients)
+coefficient2=paste(first.random$coefficients[1],first.random$coefficients[2])
+coefficient3=paste(first.poolced$coefficients[1],first.poolced$coefficients[2])
+coefficient=data.frame(coefficient1,coefficient2,coefficient3)
+
+residuals1=first.fixed$residuals
+residuals2=first.random$residuals
+residuals3=first.poolced$residuals
+residuals=data.frame(residuals1,residuals2,residuals3)
+
+dfresiduals=t(data.frame(first.fixed$df.residual,first.random$df.residual,first.poolced$df.residual))
+
+#call1="plm(formula = log(first) ~ log(GDP), data = paneldata, model = within,index = c(city, season))"
+#call2="plm(formula = log(first) ~ log(GDP), data = paneldata, model = random, index = c(city, season))"
+#call3="plm(formula = log(first) ~ log(GDP), data = paneldata, model = pooling, index = c(city, season))"
+#calls=data.frame(call1,call2,call3)
+
+call1=paste("plm(formula = log(",field1,") ~ log(",field2,"), data = paneldata, model = within,index = c(city, season))")
+call2=paste("plm(formula = log(",field1,") ~ log(",field2,"), data = paneldata, model = random,index = c(city, season))")
+call3=paste("plm(formula = log(",field1,") ~ log(",field2,"), data = paneldata, model = pooling,index = c(city, season))")
+calls=data.frame(call1,call2,call3)
+
+table1=cbind(modeltype,dfresiduals,t(calls))
+colnames(table1)=c("model type","df.residuals","calls")
+table2=cbind(coefficient,residuals)
+it=pFtest(first.fixed,first.poolced)	
+table3=data.frame("F test",it$statistic,it$p.value,it$method,paste(it$parameter[1],it$parameter[2]),it$alternative)
+colnames(table3)=c("test name","statistic","P-value","method","parameter","alternative")
+table1=data.frame(table1)
+dbSendQuery(conn,"drop table \"table1\"")
+dbWriteTable(conn,"table1",table1)
+dbSendQuery(conn,"drop table \"table2\"")
+dbWriteTable(conn,"table2",table2)
+dbSendQuery(conn,"drop table \"table3\"")
+dbWriteTable(conn,"table3",table3)

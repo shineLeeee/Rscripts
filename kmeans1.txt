@@ -1,0 +1,22 @@
+library("ROracle")
+drv=dbDriver("Oracle")
+conn=dbConnect(drv,username="datauser",password="datauser",dbname="10.92.14.32:1521/GZYCICSS")
+
+order=dbSendQuery(conn,"select * from clusterpre1")
+order=fetch(order)
+odcluster=kmeans(order$P1,2)
+center2=c(sort(odcluster$centers))
+
+odCenter=as.data.frame(odcluster$centers)
+center2=c(sort(odCenter$V1))
+odcluster=kmeans(order$P1,center2)
+order1=cbind(order,odcluster$cluster)
+
+
+ids=dbSendQuery(conn,"select pubid from clusterpre1")
+ids=fetch(ids)
+final=cbind(ids,odcluster$cluster)
+dbSendQuery(conn,"drop table \"clustered1\"")
+dbWriteTable(conn,"clustered1",final)
+dbSendQuery(conn,"CREATE OR REPLACE VIEW v_cluster AS  SELECT a.pubid LICENSE_CODE,    b.Cust_name COM_NAME,    a.\"odcluster$cluster\" CLU  FROM \"clustered1\" a,    v_d_retailer b  WHERE a.pubid=b.CUST_CODE")
+

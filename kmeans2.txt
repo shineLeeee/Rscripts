@@ -1,0 +1,41 @@
+library("ROracle")
+drv=dbDriver("Oracle")
+conn=dbConnect(drv,username="datauser",password="datauser",dbname="10.92.14.32:1521/GZYCICSS")
+
+order=dbSendQuery(conn,"select * from clusterpre2")
+order=fetch(order)
+odcluster=kmeans(order$P1,2)
+center2=c(sort(odcluster$centers))
+
+odCenter=as.data.frame(odcluster$centers)
+center2=c(sort(odCenter$V1))
+odcluster=kmeans(order$P1,center2)
+order1=cbind(order,odcluster$cluster)
+
+odcluster2=kmeans(order$P2,2)
+center2=c(sort(odcluster2$centers))
+odCenter=as.data.frame(odcluster2$centers)
+center2=c(sort(odCenter$V1))
+odcluster2=kmeans(order$P2,center2)
+
+ids=dbSendQuery(conn,"select pubid from clusterpre2")
+ids=fetch(ids)
+c=c('','')
+i=1
+for(i in 1:length(ids$PUBID)){
+  a <- odcluster$cluster[i]
+  b <- odcluster2$cluster[i]
+  if((a==1)&(b==1))
+    c[i] <- '1'
+  else if((a==1)&(b==2))
+    c[i] <- '2'
+  else if((a==2)&(b==1))
+    c[i] <- '3'
+  else
+    c[i] <- '4'
+}
+final=cbind(ids,c)
+##delete the result last time
+dbSendQuery(conn,"drop table \"clustered2\"")
+dbWriteTable(conn,"clustered2",final)
+dbSendQuery(conn,"CREATE OR REPLACE VIEW v_cluster AS  SELECT a.pubid LICENSE_CODE,    b.Cust_name COM_NAME,    a.\"c\" CLU  FROM \"clustered2\" a,    v_d_retailer b  WHERE a.pubid=b.CUST_CODE")

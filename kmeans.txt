@@ -1,0 +1,97 @@
+#setwd(datauri)
+library(ggplot2)
+library(plyr)
+sell = read.csv('H:/tobacco_R/Rweb_script/sell1.csv')
+#good = read.csv('good.csv')
+#good = good[, -1]
+#colnames(good) = c('ITEM_CODE', 'ITEM_NAME')
+#good = join(good, sell[,c('ITEM_CODE', 'PRICE')])
+#good = unique(good)
+#sell = sell[,c('LICENSE_CODE', 'PUH_TIME','PRICE','AMT','COM_NAME')]
+sell$PUH_TIME = as.numeric(sell$PUH_TIME)
+sell$PUH_TIME = ISOdate(floor(sell$PUH_TIME/10^10), floor(sell$PUH_TIME%%10^9/10^8),
+                        floor(sell$PUH_TIME%%10^8/10^6),floor(sell$PUH_TIME%%10^6/10^4), 
+                        floor(sell$PUH_TIME%%10^4/10^2), sell$PUH_TIME%%10^2)
+
+############  整理store   #######################
+#store = read.csv('store1.csv')
+#store$date = as.Date(as.character(store$DATE1), format = '%Y%m%d')
+#store = store[, c(-1,-5)]
+#store.eve = aggregate(data = store, QTY~date, FUN = sum)
+#store.item.sample = aggregate(data = store, QTY~date+ITEM_CODE, FUN=sum)
+
+item.sell = aggregate(data = sell, QTY_ORD~ITEM_CODE + PRICE, FUN = sum)
+#item.sell = join(item.sell, good[,c('ITEM_CODE','PRICE')])
+#item.sell = na.omit(item.sell)
+#summary(item.sell$QTY_ORD)
+
+#####################将卷烟分为二类###########################
+itemCluster = kmeans(item.sell$PRICE, 2)
+itemCenter = as.data.frame(itemCluster$centers)
+center2 = c(sort(itemCenter$V1))
+item.price2 = kmeans(item.sell$PRICE, center2)#####两类
+item.price2$centers
+item.sell$cluster.price2 = item.price2$cluster
+
+
+#ggplot(item.sell, aes(factor(cluster.price2), PRICE))+geom_boxplot()
+
+
+######将烟的分类加到主矩阵
+sell = join(sell, item.sell, by = 'ITEM_CODE')
+##############若只将价格分为两类,按店高低端烟销售占总销售额比例分类##########
+shop = aggregate(cbind(AMT)~COM_NAME+cluster.price2 + LICENSE_CODE,data = sell, FUN = 'sum')
+shop = shop[order(shop$COM_NAME), ]
+shop.all = aggregate(cbind(AMT)~COM_NAME, data = shop, FUN = 'sum')
+colnames(shop.all) = c('COM_NAME','AMT.ALL')
+shop = join(shop, shop.all)
+shop$AMT.ratio = shop$AMT/shop$AMT.ALL
+X = split(shop, shop$cluster.price2)
+Y = lapply(seq_along(X), function(x)as.data.frame(X[[x]])[,c('COM_NAME','cluster.price2','AMT.ratio','LICENSE_CODE')])
+A = Y[[1]];B=Y[[2]]
+colnames(A) = c('COM_NAME', 'cluster.price', 'A.AMT.ratio','LICENSE_CODE')
+colnames(B) = c('COM_NAME', 'cluster.price', 'B.AMT.ratio','LICENSE_CODE')
+
+###获取不同门店销售高低端烟的比例
+AB = join(B,A[,-2],by='COM_NAME')
+k.cluster = kmeans(AB[,c('A.AMT.ratio','B.AMT.ratio')], 2)
+itemCluster = kmeans(AB[,c('A.AMT.ratio','B.AMT.ratio')], 2)
+itemCenter = as.data.frame(itemCluster$centers)
+center2 = itemCenter[order(itemCenter$B.AMT.ratio,decreasing = TRUE),]
+itemCluster = kmeans(AB[,c('A.AMT.ratio','B.AMT.ratio')], center2)#####两类
+
+
+itemCluster$cluster[itemCluster$cluster==1] ='A'
+itemCluster$cluster[itemCluster$cluster==2] ='B'
+AB$clu.amt = itemCluster$cluster
+
+##################按活跃度分类##############
+sell$date = as.Date(sell$PUH_TIME)
+active = aggregate(cbind(AMT)~COM_NAME+date+LICENSE_CODE, data = sell, FUN='sum')
+means = aggregate(data = active, AMT~COM_NAME, FUN='mean')
+colnames(means) = c('COM_NAME','AMT_mean')
+active = join(active, means, by='COM_NAME')
+###  活跃度计算公式
+active$active = (active$AMT-active$AMT_mean)/active$AMT_mean
+shop.active = aggregate(data = active, active~COM_NAME, FUN='var')
+##
+active.clus = kmeans(shop.active$active,2)
+center = as.data.frame(active.clus$center)
+center = center[order(center$V1), ]
+active.clus = kmeans(shop.active$active,center)
+
+
+active.clus$cluster[active.clus$cluster==1]='A'
+active.clus$cluster[active.clus$cluster==2]='B'
+AB$clu.act = active.clus$cluster
+AB$clu = paste(AB$clu.amt,AB$clu.act,sep='')
+
+result = AB[,c('COM_NAME', 'clu', 'LICENSE_CODE')]
+filename = 'H:/result.csv'
+write.csv(result,file = filename,row.names = FALSE)
+
+
+
+
+
+
